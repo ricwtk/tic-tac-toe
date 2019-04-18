@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+  <meta charset="utf-8">
+  <head>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.10/dist/vue.js"></script>
+    <link rel="stylesheet" href="https://cdn.materialdesignicons.com/3.6.95/css/materialdesignicons.min.css">
+    <link href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans" rel="stylesheet"> 
+  </head>
+
+  <body>
+    <div id="app">
+      <div class="message" v-show="winning_player.length > 0">
+        Player&nbsp;<div :class="['mdi', 'mdi-' + ((winning_player.length > 0) ? player[winning_player[0].n] : '')]"></div>&nbsp;won!
+      </div>
+      <div class="message" v-show="tie">
+        It's a tie!
+      </div>
+      <div class="message hide" v-show="!tie && !(winning_player.length > 0)">
+        Placeholder
+      </div>
+      <div id="game-pad">
+        <div class="squarerow" v-for="r in [...Array(grid_size).keys()]">
+          <div :class="['square', 'mdi', (s == -1) ? '' : 'mdi-'+player[s]]" v-for="(s,i) in squares.slice(r*grid_size,r*grid_size+grid_size)" @click="(s == -1) ? fillAndSwitch(r*grid_size+i) : null"></div>
+        </div>
+      </div>
+      <div id="controls">
+        <div v-for="p in player" :key="p" :class="['player-block', (player[currentplayer] == p) ? 'selected' : '', 'mdi', 'mdi-' + p]"></div>
+        <div class="mdi mdi-plus control-block" @click="choosing_player = true" title="add player"></div>
+        <div class="mdi mdi-minus control-block" @click="player.pop()" title="remove last player"></div>
+        <div class="mdi mdi-playlist-plus control-block" @click="changeGrid(1)" title="increase grid by 1"></div>
+        <div class="mdi mdi-playlist-minus control-block" @click="changeGrid(-1)" title="reduce grid by 1"></div>
+        <div class="mdi mdi-account-switch control-block" @click="switchPlayer" title="skip to next player"></div>
+        <div class="mdi mdi-eraser control-block" @click="clearBoard" title="clear game board"></div>
+        <div :class="['mdi', 'control-block', 'mdi-numeric-2-box-outline', additional_rule ? 'selected' : 'unselected']" @click="additional_rule = !additional_rule" title="toggle additional rule"></div>
+      </div>
+      
+      <div class="overlay" v-show="choosing_player">
+        <div class="overlay-box">
+          <div class="overlay-title">
+            Choose meaple for new player:
+          </div>
+          <div class="overlay-content">
+            <div v-for="p in additional_player" 
+              :class="['additional-player-block', 'mdi', 'mdi-'+p, (p == chosen_additional_player) ? 'selected' : '', (player.includes(p)) ? 'hide' : '']"
+              @click="chosen_additional_player = p"></div>
+          </div>
+          <div class="overlay-controls">
+            <div class="control-block mdi mdi-thumb-up-outline" @click="addPlayer"></div>
+            <div class="control-block mdi mdi-close" @click="choosing_player = false"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      html, body {
+        margin: 0;
+        font-family: 'IBM Plex Sans', sans-serif;
+      }
+      #app {
+        display: flex;
+        flex-direction: column;
+        width: 100vw;
+        height: 100vh;
+      }
+      #game-pad {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex-grow: 1;
+        padding: 30px;
+        overflow: auto;
+      }
+      .squarerow {
+        display: flex;
+        flex-grow: 1;
+        flex-shrink: 0;
+        flex-basis: 0;
+        flex-direction: row;
+        width: 100%;
+      }
+      .square {
+        display: flex;
+        flex-grow: 1;
+        flex-shrink: 0;
+        flex-basis: 0;
+        font-size: 300%;
+        min-width: 3ex;
+        min-height: 3ex; 
+        border: 1px solid gray;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        -moz-user-select: none;
+      }
+      .square:hover {
+        background-color: #dddddd;
+      }
+      .square:first-child { border-left-width: 0pt!important; }
+      .square:last-child { border-right-width: 0pt!important; }
+      .squarerow:first-child .square { border-top-width: 0pt!important; }
+      .squarerow:last-child .square { border-bottom-width: 0pt!important; }
+      #controls { 
+        display: flex;
+        flex-direction: row;
+        font-size: 200%;
+        padding: 5px 0px;
+        justify-content: center;
+      }
+      .player-block, .control-block {
+        width: 3ex;
+        height: 3ex;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        user-select: none;
+        -moz-user-select: none;
+        border: 1pt solid gray;
+        margin-left: 5px;
+        cursor: pointer;
+      }
+      .player-block.selected:hover, .control-block:hover {
+        background-color: #eee;
+      }
+      .player-block, .control-block.unselected {
+        color: gray;
+        background-color: #dddddd;
+      }
+      .player-block.selected {
+        color: black;
+        background-color: #ffffff;
+      }
+      .message {
+        display: flex;
+        font-size: 200%;
+        justify-content: center;
+        align-items: center;
+        padding: 5px;
+      }
+      .hide { opacity: 0; }
+      .overlay {
+        position: absolute;
+        width: 100vw;
+        height: 100vh;
+        top: 0px;
+        left: 0px;
+        z-index: 100;
+        background-color: #ffffffaa;
+        display: flex;
+        flex-direction: column;
+      }
+      .overlay-box {
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        margin: 50px;
+        padding: 10px;
+        border-radius: 10px;
+        background-color: white;
+        border: 1pt solid #dddddd;
+      } 
+      .overlay-content {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: flex-start;
+        flex-grow: 1;
+        padding: 10px;
+        font-size: 200%;
+      }
+      .overlay-controls {
+        display: flex;
+        flex-direction: row;
+        justify-content: flex-end;
+        font-size: 200%;
+      }
+      .additional-player-block {
+        display: flex;
+        width: 3ex;
+        height: 3ex;
+        border: 1pt solid #ddd;
+        justify-content: center;
+        align-items: center;
+        margin-top: 3px;
+        margin-left: 3px;
+      }
+      .additional-player-block.selected {
+        background-color: #ddd;
+      }
+      .additional-player-block.hide {
+        display: none;
+      }
+    </style>
+
+    <script>
+      var app = new Vue({
+        el: "#app",
+        data: {
+          grid_size: 3,
+          squares: Array(9).fill(-1),
+          player: ["close", "circle-outline"],
+          additional_player: ["close", "circle-outline", "access-point", "account", "account-badge", "checkbox-blank-circle", "all-inclusive", "brightness-5", "camera-iris", "check", "checkbox-blank", "checkbox-blank-outline", "checkbox-intermediate", "chef-hat", "chess-bishop", "chess-king", "chess-knight", "chess-pawn", "chess-queen", "chess-rook", "circle-slice-8", "cloud", "dna", "emoticon-excited-outline", "emoticon-happy-outline", "emoticon-excited", "emoticon-happy", "emoticon-devil", "emoticon-devil-outline", "face"],
+          chosen_additional_player: "",
+          currentplayer: null,
+          winning_player: [],
+          choosing_player: false,
+          additional_rule: false,
+          tie: false
+        },
+        computed: {
+          endGame: function () {
+            return this.squares.filter(x => x == -1).length == 0;
+          }
+        },
+        mounted: function() {
+          this.clearBoard();
+        },
+        methods: {
+          fill: function(i) {
+            this.$set(this.squares, i, this.currentplayer);
+          },
+          switchPlayer: function() {
+            if (this.winning_player.length == 0)
+              this.currentplayer = (this.currentplayer + 1) % this.player.length;
+          },
+          fillAndSwitch: function(i) {
+            if (this.winning_player.length == 0) {
+              this.fill(i);
+              let player_status = [...Array(this.player.length).keys()].map(this.checkPlayer);
+              this.winning_player = player_status.filter(x => x.won);
+              if (this.winning_player.length <= 0) {
+                if (!this.endGame)
+                  this.switchPlayer();
+                else {
+                  player_status = this.finalCheck();
+                  this.winning_player = player_status.filter(x => x.won);
+                  if (this.winning_player.length <= 0) {
+                    this.tie = true;
+                  }
+                }
+              }
+            }
+          },
+          clearBoard: function() {
+            this.squares = Array(this.grid_size**2).fill(-1);
+            this.winning_player = [];
+            this.currentplayer = 0;
+            this.tie = false;
+          },
+          checkPlayer: function(n) {
+            let player_loc = this.squares.map((x,i) => (x == n) ? i : -1).filter(x => x > -1);
+            let won = false;
+            let winning = [];
+            player_loc.forEach((x,i,arr) => {
+              if ((!won) && (x % this.grid_size == 0)) {
+                won = [...Array(this.grid_size).keys()].map(ti => arr.includes(x+ti)).every(avail => avail);
+                winning = won ? [...Array(this.grid_size).keys()].map(ti => x+ti) : [];
+              }
+
+              if ((!won) && ([...Array(this.grid_size).keys()].includes(x))) {
+                won = [...Array(this.grid_size).keys()].map(ti => arr.includes(x+ti*this.grid_size)).every(avail => avail);
+                winning = won ? [...Array(this.grid_size).keys()].map(ti => x+ti*this.grid_size) : [];
+              }
+
+              if ((!won) && (x == 0)) {
+                won = [...Array(this.grid_size).keys()].map(ti => arr.includes(x+ti*this.grid_size+ti)).every(avail => avail);
+                winning = won ? [...Array(this.grid_size).keys()].map(ti => x+ti*this.grid_size+ti) : [];
+              }
+
+              if ((!won) && (x == this.grid_size-1)) {
+                won = [...Array(this.grid_size).keys()].map(ti => arr.includes(x+ti*this.grid_size-ti)).every(avail => avail);
+                winning = won ? [...Array(this.grid_size).keys()].map(ti => x+ti*this.grid_size-ti) : [];
+              }
+            });
+            return { n: n, won: won, winning: winning, rule: 'original' };
+          },
+          addPlayer: function () {
+            if (this.chosen_additional_player) {
+              this.player.push(this.chosen_additional_player);
+              this.choosing_player = false;
+              this.clearBoard();
+            }
+          },
+          changeGrid: function (n) {
+            this.grid_size = Math.max(this.grid_size + n, 3);
+            this.clearBoard();
+          },
+          finalCheck: function () {
+            if (this.additional_rule) {
+              let checks = [];
+              [...Array(this.grid_size).keys()].forEach(x => {
+                // add columns
+                checks.push([...Array(this.grid_size).keys()].map(y => x + y*this.grid_size));
+                // add rows
+                checks.push([...Array(this.grid_size).keys()].map(y => x*this.grid_size + y));
+                // add nw-se diagonal
+                if (x == 0)
+                  checks.push([...Array(this.grid_size).keys()].map(y => x + y*this.grid_size + y));
+                // add ne-sw diagonal
+                if (x == this.grid_size - 1)
+                  checks.push([...Array(this.grid_size).keys()].map(y => x + y*this.grid_size - y));
+              });
+              let player_getting_line = checks.map(c => {
+                let this_line = this.squares.filter((x,i) => c.includes(i));
+                let result = this_line.reduce((acc, cValue) => {
+                  if (cValue > -1) acc[cValue] += 1;
+                  return acc;
+                }, Array(this.player.length).fill(0));
+                let maxCount = Math.max(...result);
+                if (result.indexOf(maxCount) == result.lastIndexOf(maxCount)) return result.indexOf(maxCount);
+                else return -1;
+              });
+              let player_points = player_getting_line.reduce((acc, cValue) => {
+                if (cValue > -1) acc[cValue] += 1;
+                return acc;
+              }, Array(this.player.length).fill(0));
+              console.log(player_points);
+              let max_pp = Math.max(...player_points);
+              if (player_points.indexOf(max_pp) == player_points.lastIndexOf(max_pp))
+                return [...Array(this.grid_size).keys()].map(n => ({
+                  n: n,
+                  won: player_points.indexOf(max_pp) == n,
+                  winning: player_points,
+                  rule: 'additionals'
+                }));
+              else 
+                return [...Array(this.grid_size).keys()].map(n => ({
+                  n: n,
+                  won: false,
+                  winning: player_points,
+                  rule: 'additionals'
+                }));
+            } else {
+              return [];
+            }
+          }
+        }
+      })
+    </script>
+  </body>
+</html>
